@@ -1,0 +1,30 @@
+# Board: ESP32-S3 DevKitC-1 (Espressif)
+# Definition: definitions/boards/esp32-s3-devkitc-1/manifest.yaml
+
+esphome:
+  name: garage-controller
+  friendly_name: garage-controller
+
+esp32:
+  variant: esp32s3
+  flash_size: 8MB
+  framework:
+    type: esp-idf
+
+logger:
+
+api:
+  encryption:
+    key: "uT6EXsB2ZGbtHODRSxAkIjgCPOImULvEPFrX84xEGRQ="
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: garage-controll Fallback Hotspot
+    password: "2D2BISeE3HVY"
+
+captive_portal:
