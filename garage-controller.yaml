@@ -19,6 +19,7 @@ api:
 
 ota:
   - platform: esphome
+    password: 21Seyr@30homeassistant
 
 wifi:
   ssid: !secret wifi_ssid
