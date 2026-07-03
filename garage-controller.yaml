@@ -40,7 +40,9 @@ web_server:
 switch:
   - platform: gpio
     id: relay_garage
-    pin: GPIO4
+    pin:
+      number: GPIO4
+      inverted: false
     restore_mode: ALWAYS_OFF
 
 # =========================
@@ -60,7 +62,7 @@ binary_sensor:
 
   - platform: status
     name: "Garage ESP Status"
-
+    entity_category: diagnostic
 # =========================
 # IMPULS BUTTON
 # =========================
@@ -106,12 +108,15 @@ cover:
 sensor:
   - platform: wifi_signal
     name: "Garage WLAN Signal"
+    entity_category: diagnostic
     update_interval: 60s
 
   - platform: uptime
     name: "Garage Laufzeit"
+    entity_category: diagnostic
 
 text_sensor:
   - platform: wifi_info
     ip_address:
       name: "Garage IP"
+      entity_category: diagnostic
