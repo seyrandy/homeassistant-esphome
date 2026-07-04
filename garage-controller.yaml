@@ -2,7 +2,7 @@
 # Definition: definitions/boards/esp32-s3-devkitc-1/manifest.yaml
 
 esphome:
-  name: garage-controller
+  name: garage
   friendly_name: Garagentor
 
 esp32:
@@ -100,7 +100,7 @@ script:
 # =====================================================
 cover:
   - platform: template
-    name: "Garage"
+    name: "Tor"
     device_class: garage
 
     lambda: |-
@@ -141,6 +141,19 @@ text_sensor:
     ssid:
       name: "WLAN"
       entity_category: diagnostic
+
+  - platform: template
+    name: "Torstatus"
+    icon: mdi:garage
+
+    lambda: |-
+      if (id(garage_closed).state) {
+        return {"🟢 Geschlossen"};
+      } else {
+        return {"🟠 Offen"};
+      }
+
+    update_interval: never
 
 # =====================================================
 # NEUSTART
