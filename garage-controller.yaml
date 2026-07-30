@@ -15,20 +15,18 @@ logger:
 
 api:
   encryption:
-    key: "uT6EXsB2ZGbtHODRSxAkIjgCPOImULvEPFrX84xEGRQ="
-
+    key: !secret garage__encryption_key
 ota:
   - platform: esphome
-    password: "21Seyr@30homeassistant"
+    password: !secret garage__ota_password
 
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
   ap:
-    ssid: "Garage Fallback"
-    password: "fallback1234"
-
+    ssid: !secret garage__ap_ssid
+    password: !secret garage__ap_password
 captive_portal:
 
 web_server:
