@@ -44,10 +44,12 @@ switch:
     restore_mode: ALWAYS_OFF
     internal: true
 
-# =====================================================
-# REEDKONTAKT (Endlage)
-# =====================================================
+
 binary_sensor:
+  # ===================================================
+  # REEDKONTAKT 1 – Tor geschlossen
+  # GPIO5
+  # ===================================================
   - platform: gpio
     id: garage_closed
     name: "Garagentor geschlossen"
@@ -61,10 +63,32 @@ binary_sensor:
       - delayed_on: 50ms
       - delayed_off: 50ms
 
+        
+  # ===================================================
+  # REEDKONTAKT 2 – Tor geöffnet
+  # GPIO6
+  # ===================================================
+  - platform: gpio
+    id: garage_open
+    name: "Garagentor geöffnet"
+
+    pin:
+      number: GPIO6
+      mode: INPUT_PULLUP
+      inverted: true
+
+    filters:
+      - delayed_on: 50ms
+      - delayed_off: 50ms
+
+  # ===================================================
+  # ESP ONLINE
+  # ===================================================
   - platform: status
     name: "ESP Online"
     entity_category: diagnostic
 
+    
 # =====================================================
 # SPERRLOGIK (Schutz vor Mehrfach-Impuls)
 # =====================================================
