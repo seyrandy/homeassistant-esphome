@@ -634,25 +634,25 @@ cover:
 
     lambda: |-
 
-      # Beide Reedkontakte gleichzeitig aktiv:
-      # physikalisch unplausibler Zustand.
+      // Beide Reedkontakte gleichzeitig aktiv:
+      // physikalisch unplausibler Zustand.
       if (id(garage_closed).state &&
           id(garage_open).state) {
         return 0.5f;
       }
 
-      # Tor vollständig geschlossen
+      // Tor vollständig geschlossen
       if (id(garage_closed).state) {
         return 0.0f;
       }
 
-      # Tor vollständig geöffnet
+      // Tor vollständig geöffnet
       if (id(garage_open).state) {
         return 1.0f;
       }
 
-      # Keiner der Reedkontakte aktiv:
-      # Fahrt oder Zwischenstellung.
+      // Keiner der Reedkontakte aktiv:
+      // Fahrt oder Zwischenstellung.
       return 0.5f;
 
 
@@ -694,19 +694,10 @@ text_sensor:
 
     lambda: |-
 
-      # ----------------------------------------------------
-      # FEHLER
-      # ----------------------------------------------------
-
       if (id(garage_closed).state &&
           id(garage_open).state) {
         return {"⚠️ Fehler"};
       }
-
-
-      # ----------------------------------------------------
-      # ÖFFNEN / SCHLIESSEN
-      # ----------------------------------------------------
 
       if (id(garage_moving)) {
 
@@ -721,28 +712,13 @@ text_sensor:
         return {"🟡 Bewegung"};
       }
 
-
-      # ----------------------------------------------------
-      # GESCHLOSSEN
-      # ----------------------------------------------------
-
       if (id(garage_closed).state) {
         return {"🔴 Geschlossen"};
       }
 
-
-      # ----------------------------------------------------
-      # GEÖFFNET
-      # ----------------------------------------------------
-
       if (id(garage_open).state) {
         return {"🟢 Offen"};
       }
-
-
-      # ----------------------------------------------------
-      # ZWISCHENSTELLUNG
-      # ----------------------------------------------------
 
       return {"🟡 Zwischenstellung"};
 
