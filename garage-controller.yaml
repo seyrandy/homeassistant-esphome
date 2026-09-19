@@ -1,5 +1,56 @@
-# Board: ESP32-S3 DevKitC-1 (Espressif)
-# Definition: definitions/boards/esp32-s3-devkitc-1/manifest.yaml
+############################################################
+# Garage Suite
+# ----------------------------------------------------------
+# Datei.........: garage_controller.yaml
+# Version.......: 1.2.0
+# Home Assistant: Core 2026.6.4
+# ESPHome.......: aktuelle Version
+#
+# Beschreibung:
+# Steuerung des Garagentors über ESP32-S3.
+#
+# Das Normstahl-Garagentor wird über einen kurzen Impuls
+# gesteuert.
+#
+# Hardware:
+# - ESP32-S3 DevKitC-1 N16R8
+# - 1-Kanal Relais an GPIO4
+# - Reedkontakt "geschlossen" an GPIO5
+# - Reedkontakt "geöffnet" an GPIO6
+#
+# Endlagen:
+# - GPIO5 = vollständig geschlossen
+# - GPIO6 = vollständig geöffnet
+#
+# Laufzeiten:
+# - Öffnen: ca. 15 s
+# - Schließen: ca. 17 s
+# - Sicherheits-Timeout Öffnen: 18 s
+# - Sicherheits-Timeout Schließen: 20 s
+#
+# Verhalten:
+# - Geschlossen + Öffnen -> Impuls
+# - Geöffnet + Schließen -> Impuls
+# - Während der Fahrt + STOP -> Impuls
+# - Zwischenstellung + manueller Befehl -> Impuls
+# - Nach STOP KEIN automatischer Impuls
+#
+# Status:
+# - 🔴 Geschlossen
+# - 🟢 Offen
+# - 🟡 Öffnet
+# - 🟡 Schließt
+# - 🟡 Zwischenstellung
+# - ⚠️ Fehler
+#
+# Autor........: ChatGPT & Andreas
+# Erstellt.....: 2026
+############################################################
+
+
+# ==========================================================
+# ESPHOME / BOARD
+# ==========================================================
 
 esphome:
   name: garage
@@ -11,14 +62,20 @@ esp32:
   framework:
     type: esp-idf
 
+
+# ==========================================================
+# GRUNDEINSTELLUNGEN
+# ==========================================================
+
 logger:
 
 api:
   encryption:
     key: !secret garage__encryption_key
+
 ota:
   - platform: esphome
-    encryption:
+    password: !secret garage__ota_password
 
 wifi:
   ssid: !secret wifi_ssid
@@ -27,29 +84,65 @@ wifi:
   ap:
     ssid: !secret garage__ap_ssid
     password: !secret garage__ap_password
+
 captive_portal:
 
 web_server:
   port: 80
 
-# =====================================================
-# RELAIS (Impuls zum Tor)
-# =====================================================
+
+# ==========================================================
+# RELAIS
+# GPIO4
+#
+# Ein Impuls = 500 ms
+# ==========================================================
+
 switch:
+
   - platform: gpio
     id: relay_garage
+
     pin:
       number: GPIO4
       inverted: false
+
     restore_mode: ALWAYS_OFF
     internal: true
 
 
+# ==========================================================
+# GLOBALE ZUSTÄNDE
+# ==========================================================
+
+globals:
+
+  # TRUE = Tor fährt gerade
+  - id: garage_moving
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  # Fahrtrichtung:
+  # 0 = keine
+  # 1 = Öffnen
+  # 2 = Schließen
+  - id: garage_direction
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+
+# ==========================================================
+# REEDKONTAKTE
+# ==========================================================
+
 binary_sensor:
-  # ===================================================
-  # REEDKONTAKT 1 – Tor geschlossen
-  # GPIO5
-  # ===================================================
+
+  # --------------------------------------------------------
+  # GPIO5 = vollständig geschlossen
+  # --------------------------------------------------------
+
   - platform: gpio
     id: garage_closed
     name: "Garagentor geschlossen"
@@ -63,11 +156,22 @@ binary_sensor:
       - delayed_on: 50ms
       - delayed_off: 50ms
 
-        
-  # ===================================================
-  # REEDKONTAKT 2 – Tor geöffnet
-  # GPIO6
-  # ===================================================
+    on_press:
+      then:
+
+        # Geschlossene Endlage erreicht
+        - lambda: |-
+            id(garage_moving) = false;
+            id(garage_direction) = 0;
+
+        # Bewegungsüberwachung beenden
+        - script.stop: garage_movement_watch
+
+
+  # --------------------------------------------------------
+  # GPIO6 = vollständig geöffnet
+  # --------------------------------------------------------
+
   - platform: gpio
     id: garage_open
     name: "Garagentor geöffnet"
@@ -81,70 +185,477 @@ binary_sensor:
       - delayed_on: 50ms
       - delayed_off: 50ms
 
-  # ===================================================
-  # ESP ONLINE
-  # ===================================================
+    on_press:
+      then:
+
+        # Geöffnete Endlage erreicht
+        - lambda: |-
+            id(garage_moving) = false;
+            id(garage_direction) = 0;
+
+        # Bewegungsüberwachung beenden
+        - script.stop: garage_movement_watch
+
+
+  # --------------------------------------------------------
+  # ESP Online
+  # --------------------------------------------------------
+
   - platform: status
     name: "ESP Online"
     entity_category: diagnostic
 
-    
-# =====================================================
-# SPERRLOGIK (Schutz vor Mehrfach-Impuls)
-# =====================================================
-globals:
-  - id: garage_lock
-    type: bool
-    restore_value: no
-    initial_value: 'false'
+
+# ==========================================================
+# SCRIPTS
+# ==========================================================
 
 script:
+
+  # ========================================================
+  # RELAISIMPULS
+  # ========================================================
+
   - id: garage_pulse
     mode: single
+
     then:
+      - switch.turn_on: relay_garage
+      - delay: 500ms
+      - switch.turn_off: relay_garage
+
+
+  # ========================================================
+  # BEWEGUNGSÜBERWACHUNG
+  #
+  # Diese Überwachung erzeugt NIEMALS einen Impuls.
+  #
+  # Sie wartet lediglich darauf, dass eine Endlage
+  # erreicht wird.
+  #
+  # Öffnen: maximal 18 Sekunden
+  # Schließen: maximal 20 Sekunden
+  # ========================================================
+
+  - id: garage_movement_watch
+    mode: restart
+
+    then:
+
+      # ----------------------------------------------------
+      # ÖFFNEN
+      # ----------------------------------------------------
+
       - if:
           condition:
-            lambda: 'return id(garage_lock) == false;'
+            lambda: |-
+              return id(garage_direction) == 1;
+
           then:
-            - lambda: 'id(garage_lock) = true;'
 
-            - switch.turn_on: relay_garage
-            - delay: 500ms
-            - switch.turn_off: relay_garage
-
-            # Sperrzeit = typische Laufzeit + Sicherheitsreserve
             - delay: 18s
 
-            - lambda: 'id(garage_lock) = false;'
+            - if:
+                condition:
+                  lambda: |-
+                    return id(garage_moving);
 
-# =====================================================
-# GARAGENTOR (COVER)
-# =====================================================
+                then:
+
+                  - logger.log:
+                      level: WARN
+                      format: "Sicherheits-Timeout beim Öffnen des Garagentors"
+
+                  - lambda: |-
+                      id(garage_moving) = false;
+                      id(garage_direction) = 0;
+
+
+      # ----------------------------------------------------
+      # SCHLIESSEN
+      # ----------------------------------------------------
+
+      - if:
+          condition:
+            lambda: |-
+              return id(garage_direction) == 2;
+
+          then:
+
+            - delay: 20s
+
+            - if:
+                condition:
+                  lambda: |-
+                    return id(garage_moving);
+
+                then:
+
+                  - logger.log:
+                      level: WARN
+                      format: "Sicherheits-Timeout beim Schließen des Garagentors"
+
+                  - lambda: |-
+                      id(garage_moving) = false;
+                      id(garage_direction) = 0;
+
+
+  # ========================================================
+  # ÖFFNEN / MANUELLER IMPULS
+  #
+  # 1. geschlossen -> Impuls zum Öffnen
+  # 2. Zwischenstellung -> manueller Impuls
+  #
+  # Während einer laufenden Fahrt wird hier NICHT
+  # automatisch ein weiterer Impuls erzeugt.
+  # ========================================================
+
+  - id: garage_open_action
+    mode: single
+
+    then:
+
+      # ----------------------------------------------------
+      # Während der Fahrt:
+      # nichts tun
+      #
+      # Zum Stoppen gibt es die STOP-Funktion.
+      # ----------------------------------------------------
+
+      - if:
+          condition:
+            lambda: |-
+              return id(garage_moving);
+
+          then:
+            - logger.log:
+                level: INFO
+                format: "Öffnen ignoriert - Garagentor fährt bereits"
+
+
+      # ----------------------------------------------------
+      # Keine Fahrt:
+      # manuellen Impuls auslösen
+      # ----------------------------------------------------
+
+      - if:
+          condition:
+            lambda: |-
+              return !id(garage_moving);
+
+          then:
+
+            # Falls geschlossen:
+            # Fahrt beginnt mit Öffnen
+
+            - if:
+                condition:
+                  lambda: |-
+                    return id(garage_closed).state;
+
+                then:
+
+                  - lambda: |-
+                      id(garage_moving) = true;
+                      id(garage_direction) = 1;
+
+                  - script.execute: garage_pulse
+                  - script.execute: garage_movement_watch
+
+
+            # Falls Zwischenstellung:
+            # NUR manueller Impuls.
+            #
+            # Die Richtung wird NICHT von der Software
+            # vorgegeben.
+
+            - if:
+                condition:
+                  lambda: |-
+                    return !id(garage_closed).state &&
+                           !id(garage_open).state;
+
+                then:
+
+                  - logger.log:
+                      level: INFO
+                      format: "Manueller Impuls aus Zwischenstellung"
+
+                  - script.execute: garage_pulse
+
+
+  # ========================================================
+  # SCHLIESSEN / MANUELLER IMPULS
+  #
+  # 1. geöffnet -> Impuls zum Schließen
+  # 2. Zwischenstellung -> manueller Impuls
+  # ========================================================
+
+  - id: garage_close_action
+    mode: single
+
+    then:
+
+      # ----------------------------------------------------
+      # Während der Fahrt:
+      # nichts tun
+      # ----------------------------------------------------
+
+      - if:
+          condition:
+            lambda: |-
+              return id(garage_moving);
+
+          then:
+            - logger.log:
+                level: INFO
+                format: "Schließen ignoriert - Garagentor fährt bereits"
+
+
+      # ----------------------------------------------------
+      # Keine Fahrt:
+      # manuellen Impuls auslösen
+      # ----------------------------------------------------
+
+      - if:
+          condition:
+            lambda: |-
+              return !id(garage_moving);
+
+          then:
+
+            # Falls geöffnet:
+            # Fahrt beginnt mit Schließen
+
+            - if:
+                condition:
+                  lambda: |-
+                    return id(garage_open).state;
+
+                then:
+
+                  - lambda: |-
+                      id(garage_moving) = true;
+                      id(garage_direction) = 2;
+
+                  - script.execute: garage_pulse
+                  - script.execute: garage_movement_watch
+
+
+            # Falls Zwischenstellung:
+            # NUR manueller Impuls.
+
+            - if:
+                condition:
+                  lambda: |-
+                    return !id(garage_closed).state &&
+                           !id(garage_open).state;
+
+                then:
+
+                  - logger.log:
+                      level: INFO
+                      format: "Manueller Impuls aus Zwischenstellung"
+
+                  - script.execute: garage_pulse
+
+
+  # ========================================================
+  # STOP
+  #
+  # Während der Fahrt:
+  # genau EIN Impuls.
+  #
+  # Danach:
+  # keine automatische weitere Aktion.
+  # ========================================================
+
+  - id: garage_stop_action
+    mode: single
+
+    then:
+
+      - if:
+          condition:
+            lambda: |-
+              return id(garage_moving);
+
+          then:
+
+            # Bewegungsüberwachung beenden
+            - script.stop: garage_movement_watch
+
+            # EIN Impuls -> Normstahl stoppt
+            - script.execute: garage_pulse
+
+            # Software merkt sich:
+            # keine aktive Fahrt mehr
+            - lambda: |-
+                id(garage_moving) = false;
+                id(garage_direction) = 0;
+
+            - logger.log:
+                level: INFO
+                format: "Garagentor manuell gestoppt"
+
+
+# ==========================================================
+# GARAGENTOR / COVER
+# ==========================================================
+
 cover:
+
   - platform: template
+    id: garage_cover
+
     name: "Tor"
     device_class: garage
 
+    has_position: true
+    assumed_state: true
+
+    # ------------------------------------------------------
+    # POSITION
+    #
+    # 0.0 = geschlossen
+    # 0.5 = Zwischenstellung
+    # 1.0 = geöffnet
+    # ------------------------------------------------------
+
     lambda: |-
-      if (id(garage_closed).state) {
-        return COVER_CLOSED;
-      } else {
-        return COVER_OPEN;
+
+      // Beide Endschalter gleichzeitig aktiv
+      // = unplausibler Zustand
+
+      if (id(garage_closed).state &&
+          id(garage_open).state) {
+        return 0.5f;
       }
 
+      // geschlossen
+
+      if (id(garage_closed).state) {
+        return 0.0f;
+      }
+
+      // geöffnet
+
+      if (id(garage_open).state) {
+        return 1.0f;
+      }
+
+      // Zwischenstellung
+
+      return 0.5f;
+
+
+    # ------------------------------------------------------
+    # ÖFFNEN
+    # ------------------------------------------------------
+
     open_action:
-      - script.execute: garage_pulse
+      - script.execute: garage_open_action
+
+
+    # ------------------------------------------------------
+    # SCHLIESSEN
+    # ------------------------------------------------------
 
     close_action:
-      - script.execute: garage_pulse
+      - script.execute: garage_close_action
+
+
+    # ------------------------------------------------------
+    # STOP
+    # ------------------------------------------------------
 
     stop_action:
-      - script.execute: garage_pulse
+      - script.execute: garage_stop_action
 
-# =====================================================
+
+# ==========================================================
+# TEXTSTATUS
+# ==========================================================
+
+text_sensor:
+
+  # --------------------------------------------------------
+  # Torstatus
+  # --------------------------------------------------------
+
+  - platform: template
+    name: "Torstatus"
+    icon: mdi:garage
+
+    lambda: |-
+
+      // Beide Endschalter gleichzeitig aktiv
+      // = Fehler
+
+      if (id(garage_closed).state &&
+          id(garage_open).state) {
+        return {"⚠️ Fehler"};
+      }
+
+
+      // geschlossen
+
+      if (id(garage_closed).state) {
+        return {"🔴 Geschlossen"};
+      }
+
+
+      // geöffnet
+
+      if (id(garage_open).state) {
+        return {"🟢 Offen"};
+      }
+
+
+      // fährt
+
+      if (id(garage_moving)) {
+
+        if (id(garage_direction) == 1) {
+          return {"🟡 Öffnet"};
+        }
+
+        if (id(garage_direction) == 2) {
+          return {"🟡 Schließt"};
+        }
+
+        return {"🟡 Bewegung"};
+      }
+
+
+      // Zwischenstellung
+
+      return {"🟡 Zwischenstellung"};
+
+    update_interval: 500ms
+
+
+  # --------------------------------------------------------
+  # WLAN / IP
+  # --------------------------------------------------------
+
+  - platform: wifi_info
+
+    ip_address:
+      name: "IP-Adresse"
+      entity_category: diagnostic
+
+    ssid:
+      name: "WLAN"
+      entity_category: diagnostic
+
+
+# ==========================================================
 # DIAGNOSE
-# =====================================================
+# ==========================================================
+
 sensor:
+
   - platform: wifi_signal
     name: "WLAN Signal"
     entity_category: diagnostic
@@ -154,33 +665,13 @@ sensor:
     name: "Laufzeit"
     entity_category: diagnostic
 
-text_sensor:
-  - platform: wifi_info
-    ip_address:
-      name: "IP-Adresse"
-      entity_category: diagnostic
 
-    ssid:
-      name: "WLAN"
-      entity_category: diagnostic
-
-  - platform: template
-    name: "Torstatus"
-    icon: mdi:garage
-
-    lambda: |-
-      if (id(garage_closed).state) {
-        return {"🟢 Geschlossen"};
-      } else {
-        return {"🟠 Offen"};
-      }
-
-    update_interval: 1s
-
-# =====================================================
+# ==========================================================
 # NEUSTART
-# =====================================================
+# ==========================================================
+
 button:
+
   - platform: restart
     name: "ESP Neustart"
     entity_category: diagnostic
