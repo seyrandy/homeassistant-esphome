@@ -167,7 +167,6 @@ globals:
     restore_value: no
     initial_value: '0'
 
-
 ############################################################
 # REEDKONTAKTE
 ############################################################
@@ -175,7 +174,7 @@ globals:
 binary_sensor:
 
   ##########################################################
-  # REEDKONTAKT GESCHLOSSEN
+  # REEDKONTAKT GESCHLOSSEN – GPIO5
   ##########################################################
 
   - platform: gpio
@@ -194,28 +193,38 @@ binary_sensor:
     on_press:
       then:
 
-        # Fahrt beenden
-        - lambda: |-
-            id(garage_moving) = false;
-            id(garage_direction) = 0;
-            id(garage_position) = 0.0f;
+        # GPIO5 ist nur beim SCHLIESSEN die relevante Endlage.
+        # Während des Öffnens wird ein Signal ignoriert.
+        - if:
+            condition:
+              lambda: |-
+                return id(garage_moving) &&
+                       id(garage_direction) == 2;
 
-        # Sicherheitsüberwachung stoppen
-        - script.stop: garage_movement_watch
+            then:
 
-        # Cover auf exakt geschlossen setzen
-        - cover.template.publish:
-            id: garage_cover
-            position: 0.0
+              - logger.log:
+                  level: INFO
+                  format: "Endlage GESCHLOSSEN erreicht"
 
-        # Cover nicht mehr als fahrend anzeigen
-        - cover.template.publish:
-            id: garage_cover
-            current_operation: IDLE
+              - lambda: |-
+                  id(garage_moving) = false;
+                  id(garage_direction) = 0;
+                  id(garage_position) = 0.0f;
+
+              - script.stop: garage_movement_watch
+
+              - cover.template.publish:
+                  id: garage_cover
+                  position: 0.0
+
+              - cover.template.publish:
+                  id: garage_cover
+                  current_operation: IDLE
 
 
   ##########################################################
-  # REEDKONTAKT GEÖFFNET
+  # REEDKONTAKT GEÖFFNET – GPIO6
   ##########################################################
 
   - platform: gpio
@@ -234,24 +243,34 @@ binary_sensor:
     on_press:
       then:
 
-        # Fahrt beenden
-        - lambda: |-
-            id(garage_moving) = false;
-            id(garage_direction) = 0;
-            id(garage_position) = 1.0f;
+        # GPIO6 ist nur beim ÖFFNEN die relevante Endlage.
+        # Während des Schließens wird ein Signal ignoriert.
+        - if:
+            condition:
+              lambda: |-
+                return id(garage_moving) &&
+                       id(garage_direction) == 1;
 
-        # Sicherheitsüberwachung stoppen
-        - script.stop: garage_movement_watch
+            then:
 
-        # Cover auf exakt geöffnet setzen
-        - cover.template.publish:
-            id: garage_cover
-            position: 1.0
+              - logger.log:
+                  level: INFO
+                  format: "Endlage GEÖFFNET erreicht"
 
-        # Cover nicht mehr als fahrend anzeigen
-        - cover.template.publish:
-            id: garage_cover
-            current_operation: IDLE
+              - lambda: |-
+                  id(garage_moving) = false;
+                  id(garage_direction) = 0;
+                  id(garage_position) = 1.0f;
+
+              - script.stop: garage_movement_watch
+
+              - cover.template.publish:
+                  id: garage_cover
+                  position: 1.0
+
+              - cover.template.publish:
+                  id: garage_cover
+                  current_operation: IDLE
 
 
   ##########################################################
