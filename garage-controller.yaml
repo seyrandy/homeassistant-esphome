@@ -100,7 +100,7 @@ api:
 
 ota:
   - platform: esphome
-    password: !secret garage__ota_password
+    encryption:
 
 
 wifi:
@@ -594,50 +594,34 @@ script:
 # COVER
 ############################################################
 
+############################################################
+# COVER
+############################################################
+
 cover:
 
   - platform: template
-
     id: garage_cover
-
     name: "Tor"
-
     device_class: garage
-
     has_position: true
 
-    assumed_state: true
-
     lambda: |-
-      // Die Cover-Position kommt aus der internen
-      // Positionsvariable.
-
       return id(garage_position);
-
-
-    ########################################################
-    # ÖFFNEN
-    ########################################################
 
     open_action:
       - script.execute: garage_open_action
 
-
-    ########################################################
-    # SCHLIESSEN
-    ########################################################
-
     close_action:
       - script.execute: garage_close_action
-
-
-    ########################################################
-    # STOP
-    ########################################################
 
     stop_action:
       - script.execute: garage_stop_action
 
+
+############################################################
+# LAUFENDE POSITIONSBERECHNUNG
+############################################################
 
 ############################################################
 # LAUFENDE POSITIONSBERECHNUNG
@@ -693,12 +677,42 @@ interval:
                 id(garage_position) = new_position;
 
 
-            # Position an Home Assistant übertragen
+            ################################################
+            # POSITION VERÖFFENTLICHEN
+            ################################################
+
             - cover.template.publish:
                 id: garage_cover
                 position: !lambda |-
                   return id(garage_position);
 
+
+            ################################################
+            # FAHRRICHTUNG VERÖFFENTLICHEN
+            ################################################
+
+            - if:
+                condition:
+                  lambda: |-
+                    return id(garage_direction) == 1;
+
+                then:
+
+                  - cover.template.publish:
+                      id: garage_cover
+                      current_operation: OPENING
+
+
+            - if:
+                condition:
+                  lambda: |-
+                    return id(garage_direction) == 2;
+
+                then:
+
+                  - cover.template.publish:
+                      id: garage_cover
+                      current_operation: CLOSING
 
 ############################################################
 # STATUS-TEXT
@@ -731,11 +745,11 @@ text_sensor:
       if (id(garage_moving)) {
 
         if (id(garage_direction) == 1) {
-          return {"🟡 Öffnet"};
+          return {"🟡 öffnet..."};
         }
 
         if (id(garage_direction) == 2) {
-          return {"🟡 Schließt"};
+          return {"🟡 schließt..."};
         }
 
         return {"🟡 Bewegung"};
