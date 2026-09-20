@@ -609,9 +609,7 @@ script:
                 format: "Garagentor manuell gestoppt"
 
 
-############################################################
-# COVER
-############################################################
+
 
 ############################################################
 # COVER
@@ -640,10 +638,6 @@ cover:
 
 ############################################################
 # LAUFENDE POSITIONSBERECHNUNG
-############################################################
-
-############################################################
-# TEST – POSITIONSBERECHNUNG
 ############################################################
 
 interval:
@@ -695,12 +689,38 @@ interval:
 
                 id(garage_position) = new_position;
 
-            - logger.log:
-                level: INFO
-                format: "GARAGE TEST: Position %.0f %% | Richtung %d"
-                args:
-                  - "id(garage_position) * 100.0f"
-                  - "id(garage_direction)"
+
+            # Position an Home Assistant übertragen
+            - cover.template.publish:
+                id: garage_cover
+                position: !lambda |-
+                  return id(garage_position);
+
+
+            # Öffnen anzeigen
+            - if:
+                condition:
+                  lambda: |-
+                    return id(garage_direction) == 1;
+
+                then:
+
+                  - cover.template.publish:
+                      id: garage_cover
+                      current_operation: OPENING
+
+
+            # Schließen anzeigen
+            - if:
+                condition:
+                  lambda: |-
+                    return id(garage_direction) == 2;
+
+                then:
+
+                  - cover.template.publish:
+                      id: garage_cover
+                      current_operation: CLOSING
 
 ############################################################
 # STATUS-TEXT
