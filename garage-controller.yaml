@@ -624,12 +624,12 @@ cover:
 ############################################################
 
 ############################################################
-# LAUFENDE POSITIONSBERECHNUNG
+# TEST – POSITIONSBERECHNUNG
 ############################################################
 
 interval:
 
-  - interval: 200ms
+  - interval: 1s
 
     then:
 
@@ -676,43 +676,12 @@ interval:
 
                 id(garage_position) = new_position;
 
-
-            ################################################
-            # POSITION VERÖFFENTLICHEN
-            ################################################
-
-            - cover.template.publish:
-                id: garage_cover
-                position: !lambda |-
-                  return id(garage_position);
-
-
-            ################################################
-            # FAHRRICHTUNG VERÖFFENTLICHEN
-            ################################################
-
-            - if:
-                condition:
-                  lambda: |-
-                    return id(garage_direction) == 1;
-
-                then:
-
-                  - cover.template.publish:
-                      id: garage_cover
-                      current_operation: OPENING
-
-
-            - if:
-                condition:
-                  lambda: |-
-                    return id(garage_direction) == 2;
-
-                then:
-
-                  - cover.template.publish:
-                      id: garage_cover
-                      current_operation: CLOSING
+            - logger.log:
+                level: INFO
+                format: "GARAGE TEST: Position %.0f %% | Richtung %d"
+                args:
+                  - "id(garage_position) * 100.0f"
+                  - "id(garage_direction)"
 
 ############################################################
 # STATUS-TEXT
