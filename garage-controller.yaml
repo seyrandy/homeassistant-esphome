@@ -153,6 +153,16 @@ globals:
     restore_value: no
     initial_value: '0'
 
+
+  # Letzte Fahrtrichtung vor einem STOP
+  # 0 = unbekannt
+  # 1 = zuletzt Öffnen
+  # 2 = zuletzt Schließen
+  - id: garage_last_direction
+    type: int
+    restore_value: no
+    initial_value: '0'  
+
   # Aktuelle geschätzte Torposition
   # 0.0 = geschlossen
   # 1.0 = geöffnet
@@ -413,6 +423,7 @@ script:
                       current_operation: IDLE
 
 
+
   ##########################################################
   # ÖFFNEN
   ##########################################################
@@ -457,6 +468,7 @@ script:
                   - lambda: |-
                       id(garage_moving) = true;
                       id(garage_direction) = 1;
+                      id(garage_last_direction) = 1;
                       id(garage_position) = 0.0f;
                       id(garage_motion_start) = millis();
 
@@ -487,13 +499,22 @@ script:
 
                   - logger.log:
                       level: INFO
-                      format: "Manueller Impuls aus Zwischenstellung"
+                      format: "Impuls aus Zwischenstellung - Öffnen"
 
-                  # Wichtig:
-                  # Keine Richtungsannahme.
-                  # Der Normstahl entscheidet.
+                  - lambda: |-
+                      id(garage_moving) = true;
+                      id(garage_direction) = 1;
+                      id(garage_last_direction) = 1;
+                      id(garage_motion_start) = millis();
+
+                  - cover.template.publish:
+                      id: garage_cover
+                      current_operation: OPENING
+
                   - script.execute: garage_pulse
 
+                  - script.execute: garage_movement_watch
+   
 
   ##########################################################
   # SCHLIESSEN
@@ -539,6 +560,7 @@ script:
                   - lambda: |-
                       id(garage_moving) = true;
                       id(garage_direction) = 2;
+                      id(garage_last_direction) = 2;
                       id(garage_position) = 1.0f;
                       id(garage_motion_start) = millis();
 
@@ -569,11 +591,21 @@ script:
 
                   - logger.log:
                       level: INFO
-                      format: "Manueller Impuls aus Zwischenstellung"
+                      format: "Impuls aus Zwischenstellung - Schließen"
 
-                  # Keine Richtungsannahme.
-                  # Nur einen Impuls an den Normstahl.
+                  - lambda: |-
+                      id(garage_moving) = true;
+                      id(garage_direction) = 2;
+                      id(garage_last_direction) = 2;
+                      id(garage_motion_start) = millis();
+
+                  - cover.template.publish:
+                      id: garage_cover
+                      current_operation: CLOSING
+
                   - script.execute: garage_pulse
+
+                  - script.execute: garage_movement_watch
 
 
   ##########################################################
@@ -592,56 +624,95 @@ script:
 
           then:
 
-            # Zuerst die aktuelle Position berechnen
+            # ------------------------------------------------
+            # Aktuelle Position berechnen
+            # ------------------------------------------------
+
             - lambda: |-
-                const uint32_t elapsed = millis() - id(garage_motion_start);
+                const uint32_t elapsed =
+                  millis() - id(garage_motion_start);
 
                 if (id(garage_direction) == 1) {
-                  float progress = elapsed / 15000.0f;
+
+                  float progress =
+                    elapsed / 15000.0f;
 
                   if (progress > 1.0f) {
                     progress = 1.0f;
                   }
 
                   id(garage_position) = progress;
+
+                  // Letzte Fahrtrichtung merken
+                  id(garage_last_direction) = 1;
                 }
 
-                if (id(garage_direction) == 2) {
-                  float progress = elapsed / 17000.0f;
+                else if (id(garage_direction) == 2) {
+
+                  float progress =
+                    elapsed / 17000.0f;
 
                   if (progress > 1.0f) {
                     progress = 1.0f;
                   }
 
-                  id(garage_position) = 1.0f - progress;
+                  id(garage_position) =
+                    1.0f - progress;
+
+                  // Letzte Fahrtrichtung merken
+                  id(garage_last_direction) = 2;
                 }
 
+
+            # ------------------------------------------------
             # Sicherheitsüberwachung stoppen
+            # ------------------------------------------------
+
             - script.stop: garage_movement_watch
 
+
+            # ------------------------------------------------
             # Einen einzigen Impuls an den Normstahl
+            # ------------------------------------------------
+
             - script.execute: garage_pulse
 
+
+            # ------------------------------------------------
             # Bewegung intern beenden
+            #
+            # garage_last_direction bleibt erhalten!
+            # ------------------------------------------------
+
             - lambda: |-
                 id(garage_moving) = false;
                 id(garage_direction) = 0;
 
+
+            # ------------------------------------------------
             # Aktuelle Position an Home Assistant melden
+            # ------------------------------------------------
+
             - cover.template.publish:
                 id: garage_cover
                 position: !lambda |-
                   return id(garage_position);
 
+
+            # ------------------------------------------------
             # Cover auf IDLE
+            # ------------------------------------------------
+
             - cover.template.publish:
                 id: garage_cover
                 current_operation: IDLE
 
+
             - logger.log:
                 level: INFO
-                format: "Garagentor manuell gestoppt"
-
+                format: "Garagentor gestoppt - letzte Richtung: %d"
+                args:
+                  - "id(garage_last_direction)"
 
 
 
