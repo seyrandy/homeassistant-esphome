@@ -193,8 +193,36 @@ binary_sensor:
     on_press:
       then:
 
-        # GPIO5 ist nur beim SCHLIESSEN die relevante Endlage.
-        # Während des Öffnens wird ein Signal ignoriert.
+        # ----------------------------------------------------
+        # GPIO5 bedeutet immer:
+        # Das Tor befindet sich in der Endlage GESCHLOSSEN.
+        #
+        # Das gilt unabhängig davon, ob die Bewegung über
+        # HA, Funkfernbedienung oder einen Taster gestartet
+        # wurde.
+        # ----------------------------------------------------
+
+        - logger.log:
+            level: INFO
+            format: "Endlage GESCHLOSSEN erkannt"
+
+        - lambda: |-
+            id(garage_position) = 0.0f;
+
+        - cover.template.publish:
+            id: garage_cover
+            position: 0.0
+
+        - cover.template.publish:
+            id: garage_cover
+            current_operation: IDLE
+            state: CLOSED
+
+        # ----------------------------------------------------
+        # Nur wenn das Tor von unserer Steuerung geschlossen
+        # wurde, wird die interne Bewegungsüberwachung beendet.
+        # ----------------------------------------------------
+
         - if:
             condition:
               lambda: |-
@@ -203,24 +231,11 @@ binary_sensor:
 
             then:
 
-              - logger.log:
-                  level: INFO
-                  format: "Endlage GESCHLOSSEN erreicht"
-
               - lambda: |-
                   id(garage_moving) = false;
                   id(garage_direction) = 0;
-                  id(garage_position) = 0.0f;
 
               - script.stop: garage_movement_watch
-
-              - cover.template.publish:
-                  id: garage_cover
-                  position: 0.0
-
-              - cover.template.publish:
-                  id: garage_cover
-                  current_operation: IDLE
 
 
   ##########################################################
@@ -243,8 +258,36 @@ binary_sensor:
     on_press:
       then:
 
-        # GPIO6 ist nur beim ÖFFNEN die relevante Endlage.
-        # Während des Schließens wird ein Signal ignoriert.
+        # ----------------------------------------------------
+        # GPIO6 bedeutet immer:
+        # Das Tor befindet sich in der Endlage GEÖFFNET.
+        #
+        # Das gilt unabhängig davon, ob die Bewegung über
+        # HA, Funkfernbedienung oder einen Taster gestartet
+        # wurde.
+        # ----------------------------------------------------
+
+        - logger.log:
+            level: INFO
+            format: "Endlage GEÖFFNET erkannt"
+
+        - lambda: |-
+            id(garage_position) = 1.0f;
+
+        - cover.template.publish:
+            id: garage_cover
+            position: 1.0
+
+        - cover.template.publish:
+            id: garage_cover
+            current_operation: IDLE
+            state: OPEN
+
+        # ----------------------------------------------------
+        # Nur wenn das Tor von unserer Steuerung geöffnet
+        # wurde, wird die interne Bewegungsüberwachung beendet.
+        # ----------------------------------------------------
+
         - if:
             condition:
               lambda: |-
@@ -253,24 +296,15 @@ binary_sensor:
 
             then:
 
-              - logger.log:
-                  level: INFO
-                  format: "Endlage GEÖFFNET erreicht"
-
               - lambda: |-
                   id(garage_moving) = false;
                   id(garage_direction) = 0;
-                  id(garage_position) = 1.0f;
 
               - script.stop: garage_movement_watch
 
-              - cover.template.publish:
-                  id: garage_cover
-                  position: 1.0
 
-              - cover.template.publish:
-                  id: garage_cover
-                  current_operation: IDLE
+
+
 
 
   ##########################################################
