@@ -20,6 +20,8 @@ esp32:
 logger:
 
 api:
+  encryption:
+    key: !secret halloween_kuerbis__encryption_key
 
 ota:
   - platform: esphome
