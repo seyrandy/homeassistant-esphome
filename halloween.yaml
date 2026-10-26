@@ -2,45 +2,33 @@
 # Definition: definitions/boards/esp32-s3-devkitc-1/manifest.yaml
 
 esphome:
-  name: halloween
-  friendly_name: Halloween
+  name: halloween-kuerbis
+  friendly_name: Halloween Kürbis
+  on_boot:
+    - priority: -100
+      then:
+        - light.turn_on:
+            id: pumpkin_ring
+            brightness: 20%
+            effect: "Rot-Orange-Wimmern"
 
 esp32:
-  variant: esp32s3
-  flash_size: 16MB
+  board: esp32-s3-devkitc-1
   framework:
     type: esp-idf
 
 logger:
 
 api:
-  encryption:
-    key: "70RvGKBAxjYyuaNch9RCw0btrSFgCsGf2A9/2msSnyA="
 
 ota:
   - platform: esphome
-    encryption:
 
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-  ap:
-    ssid: Halloween Fallback Hotspot
-    password: "oURiTobQDGG9"
-
-captive_portal:
-
-time:
-  - platform: sntp
-    id: local_time
-    timezone: Europe/Berlin
 
 globals:
-  - id: schedule_active
-    type: bool
-    restore_value: no
-    initial_value: "false"
-
   - id: flash_active
     type: bool
     restore_value: no
@@ -72,7 +60,7 @@ light:
           name: "Rot-Orange-Wimmern"
           update_interval: 20ms
           lambda: |-
-            // Bei Bewegung: zehn weiße Blitze
+            // Zehn weiße Blitze bei Bewegung
             if (id(flash_active)) {
               if (millis() - id(flash_step_started) >= 120) {
                 id(flash_step_started) = millis();
@@ -93,7 +81,7 @@ light:
               }
             }
 
-            // Dauernder rot-oranger Farbwechsel
+            // Rot-oranges Wimmern
             static float phase = 0.0f;
             if (initial_run) {
               phase = 0.0f;
@@ -111,6 +99,19 @@ light:
               it[i] = Color(red, green, 0);
             }
 
+
+sensor:
+  - platform: wifi_signal
+    name: "WLAN Signal"
+    update_interval: 60s
+    entity_category: diagnostic
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "IP-Adresse"
+      entity_category: diagnostic
+            
 binary_sensor:
   - platform: gpio
     name: "Bewegungsmelder"
@@ -123,41 +124,9 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: |-
-                auto now = id(local_time).now();
-                bool active_hours = now.is_valid() &&
-                                    (now.hour >= 17 || now.hour < 6);
-                return active_hours && !id(flash_active);
+              lambda: return !id(flash_active);
             then:
               - lambda: |-
                   id(flash_active) = true;
                   id(flash_step) = 0;
                   id(flash_step_started) = millis();
-
-interval:
-  - interval: 1s
-    then:
-      - if:
-          condition:
-            lambda: |-
-              auto now = id(local_time).now();
-              bool should_be_active = now.is_valid() &&
-                                      (now.hour >= 17 || now.hour < 6);
-              return should_be_active != id(schedule_active);
-          then:
-            - lambda: |-
-                auto now = id(local_time).now();
-                id(schedule_active) = now.is_valid() &&
-                                      (now.hour >= 17 || now.hour < 6);
-
-            - if:
-                condition:
-                  lambda: return id(schedule_active);
-                then:
-                  - light.turn_on:
-                      id: pumpkin_ring
-                      brightness: 20%
-                      effect: "Rot-Orange-Wimmern"
-                else:
-                  - lambda: id(flash_active) = false;
-                  - light.turn_off: pumpkin_ring
