@@ -29,3 +29,135 @@ wifi:
     password: "oURiTobQDGG9"
 
 captive_portal:
+
+time:
+  - platform: sntp
+    id: local_time
+    timezone: Europe/Berlin
+
+globals:
+  - id: schedule_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+  - id: flash_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+  - id: flash_step
+    type: int
+    restore_value: no
+    initial_value: "0"
+
+  - id: flash_step_started
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+
+light:
+  - platform: esp32_rmt_led_strip
+    id: pumpkin_ring
+    name: "Kürbis LED-Ring"
+    pin: GPIO4
+    num_leds: 12
+    chipset: WS2812
+    channel_colors: GRB
+    max_refresh_rate: 16ms
+    restore_mode: ALWAYS_OFF
+
+    effects:
+      - addressable_lambda:
+          name: "Rot-Orange-Wimmern"
+          update_interval: 20ms
+          lambda: |-
+            // Bei Bewegung: zehn weiße Blitze
+            if (id(flash_active)) {
+              if (millis() - id(flash_step_started) >= 120) {
+                id(flash_step_started) = millis();
+                id(flash_step)++;
+
+                if (id(flash_step) >= 20) {
+                  id(flash_active) = false;
+                }
+              }
+
+              if (id(flash_active)) {
+                if ((id(flash_step) % 2) == 0) {
+                  it.all() = Color(255, 255, 255);
+                } else {
+                  it.all() = Color::BLACK;
+                }
+                return;
+              }
+            }
+
+            // Dauernder rot-oranger Farbwechsel
+            static float phase = 0.0f;
+            if (initial_run) {
+              phase = 0.0f;
+            }
+
+            phase += 0.10f;
+            if (phase > 6.28318f) {
+              phase -= 6.28318f;
+            }
+
+            for (int i = 0; i < it.size(); i++) {
+              float wave = (sinf(phase + i * 0.55f) + 1.0f) / 2.0f;
+              uint8_t red = 100 + (uint8_t)(155 * wave);
+              uint8_t green = (uint8_t)(120 * wave);
+              it[i] = Color(red, green, 0);
+            }
+
+binary_sensor:
+  - platform: gpio
+    name: "Bewegungsmelder"
+    device_class: motion
+    pin:
+      number: GPIO5
+      mode:
+        input: true
+    on_press:
+      then:
+        - if:
+            condition:
+              lambda: |-
+                auto now = id(local_time).now();
+                bool active_hours = now.is_valid() &&
+                                    (now.hour >= 17 || now.hour < 6);
+                return active_hours && !id(flash_active);
+            then:
+              - lambda: |-
+                  id(flash_active) = true;
+                  id(flash_step) = 0;
+                  id(flash_step_started) = millis();
+
+interval:
+  - interval: 1s
+    then:
+      - if:
+          condition:
+            lambda: |-
+              auto now = id(local_time).now();
+              bool should_be_active = now.is_valid() &&
+                                      (now.hour >= 17 || now.hour < 6);
+              return should_be_active != id(schedule_active);
+          then:
+            - lambda: |-
+                auto now = id(local_time).now();
+                id(schedule_active) = now.is_valid() &&
+                                      (now.hour >= 17 || now.hour < 6);
+
+            - if:
+                condition:
+                  lambda: return id(schedule_active);
+                then:
+                  - light.turn_on:
+                      id: pumpkin_ring
+                      brightness: 20%
+                      effect: "Rot-Orange-Wimmern"
+                else:
+                  - lambda: id(flash_active) = false;
+                  - light.turn_off: pumpkin_ring
