@@ -50,6 +50,13 @@ light:
     max_refresh_rate: 16ms
     restore_mode: ALWAYS_OFF
 
+    on_turn_on:
+      - light.turn_on:
+          id: pumpkin_ring
+          brightness: 40%
+          effect: "Rot-Orange-Wimmern"
+
+    
     effects:
       - addressable_lambda:
           name: "Rot-Orange-Wimmern"
@@ -94,7 +101,7 @@ light:
               it[i] = Color(red, green, 0);
             }
 
-
+            
 sensor:
   - platform: wifi_signal
     name: "WLAN Signal"
